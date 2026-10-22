@@ -1,0 +1,22 @@
+{
+  "name": "jam-sync",
+  "version": "0.1.0",
+  "description": "Jam compartilhada que sincroniza ouvintes do Spotify e do YouTube Music na mesma fila.",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "author": "Gabriel",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "16.4.5",
+    "express": "4.21.1",
+    "socket.io": "4.8.1"
+  }
+}
