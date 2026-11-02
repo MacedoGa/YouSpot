@@ -77,6 +77,17 @@ No celular: abra o link → *Adicionar à tela inicial* → crie a jam → toque
 
 **Quem ouve pelo Spotify:** abra o app do Spotify e toque qualquer música uma vez, para o aparelho aparecer como dispositivo ativo. Depois, no Jam Sync, toque em **Entrar com Spotify** e autorize. Você volta para a mesma sala, no mesmo lugar (e o anfitrião continua anfitrião).
 
+**O app do Spotify também controla a sala:** pausar, tocar, pular para um ponto, próxima/anterior ou escolher outra música no app do Spotify vale para todo mundo (a sala percebe em até ~3s). "Próxima/anterior" andam pela fila do YouSpot, não pelo álbum.
+
+### 5. Ouvir pelo app do YouTube Music (Android, Premium)
+O YouTube Music não tem API para ser controlado de fora. O **YouSpot Ponte** (pasta `android/`) é um app Android que fica conectado à jam e controla o app oficial do YouTube Music pelo controle de mídia do Android (o mesmo da notificação e do fone Bluetooth). Funciona com a tela bloqueada.
+
+1. No celular, baixe e instale: <https://github.com/MacedoGa/YouSpot/releases/latest/download/youspot-ponte.apk> (o Android pede para permitir "instalar apps desconhecidos" do navegador).
+2. Abra o YouSpot Ponte e libere o que ele pede: **acesso às notificações**, **sobrepor outros apps**, notificações e (recomendado) **sem restrição de bateria**. No Android 13+ o acesso às notificações de apps instalados por APK vem bloqueado: Configurações › Apps › YouSpot Ponte › ⋮ › *Permitir configurações restritas*.
+3. No site da jam, toque em **▶ Ouvir pelo app do YouTube Music**: o app ponte abre já na sala certa.
+
+Limitações: só Android; precisa do YouTube Music **Premium** (sem ele o YouTube Music para em segundo plano); a integração não é oficial, então uma atualização do YouTube Music pode mudar o comportamento. O APK é compilado pelo GitHub Actions (`.github/workflows/android.yml`) a cada mudança em `android/`.
+
 ## Estrutura
 
 ```
