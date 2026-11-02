@@ -3,8 +3,10 @@
 const NOISE_PATTERNS = [
   /\((official|oficial)[^)]*\)/gi,
   /\[(official|oficial)[^\]]*\]/gi,
-  /\((lyrics?|letra|legendado|audio|áudio|visuali[sz]er|hd|hq|4k)[^)]*\)/gi,
-  /\[(lyrics?|letra|legendado|audio|áudio|visuali[sz]er|hd|hq|4k)[^\]]*\]/gi,
+  /\((v[ií]deo|clipe|[aá]udio|music video)\s+(official|oficial)[^)]*\)/gi,
+  /\[(v[ií]deo|clipe|[aá]udio|music video)\s+(official|oficial)[^\]]*\]/gi,
+  /\((lyrics?|letra|legendado|tradu[cç][aã]o|audio|áudio|visuali[sz]er|hd|hq|4k)[^)]*\)/gi,
+  /\[(lyrics?|letra|legendado|tradu[cç][aã]o|audio|áudio|visuali[sz]er|hd|hq|4k)[^\]]*\]/gi,
   /\b(official (music )?video|clipe oficial|video oficial|vídeo oficial|official audio)\b/gi,
   /\|.*$/g,
 ];
@@ -26,7 +28,8 @@ function normalize(str) {
 function cleanYoutubeTitle(title) {
   let t = decodeEntities(title || '');
   for (const re of NOISE_PATTERNS) t = t.replace(re, '');
-  return t.replace(/\s+/g, ' ').trim();
+  // Sobras como "()" ou "[ ]" quando só parte do parêntese era ruído.
+  return t.replace(/\(\s*\)|\[\s*\]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function decodeEntities(str) {
@@ -111,6 +114,15 @@ function scoreSpotifyCandidate(ref, cand) {
   return score;
 }
 
+// Candidatos com nota mínima, do melhor para o pior.
+function rankCandidates(ref, candidates, scorer, minScore = 30) {
+  return candidates
+    .map((c) => ({ c, s: scorer(ref, c) }))
+    .filter((x) => x.s >= minScore)
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.c);
+}
+
 function pickBest(ref, candidates, scorer, minScore = 30) {
   let best = null;
   let bestScore = -Infinity;
@@ -140,4 +152,5 @@ module.exports = {
   scoreSpotifyCandidate,
   pickBest,
   parseYoutubeUrl,
+  rankCandidates,
 };

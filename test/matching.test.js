@@ -12,6 +12,12 @@ test('parseYoutubeVideo separa "Artista - Título" e limpa ruído', () => {
   assert.deepStrictEqual(r, { artist: 'Anitta', title: 'Envolver' });
 });
 
+test('cleanYoutubeTitle entende "vídeo oficial" em português e não deixa "()"', () => {
+  assert.strictEqual(m.cleanYoutubeTitle('a-ha - Take On Me (Vídeo oficial)'), 'a-ha - Take On Me');
+  assert.strictEqual(m.cleanYoutubeTitle('Música [Clipe Oficial] (Tradução)'), 'Música');
+  assert.strictEqual(m.cleanYoutubeTitle('Take On Me (MTV Unplugged)'), 'Take On Me (MTV Unplugged)');
+});
+
 test('parseIsoDuration', () => {
   assert.strictEqual(m.parseIsoDuration('PT4M13S'), 253000);
   assert.strictEqual(m.parseIsoDuration('PT1H2M'), 3720000);

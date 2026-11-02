@@ -22,15 +22,45 @@
       <h1>Jam Sync</h1>
       <p class="muted">Ouçam juntos — cada um no seu Spotify ou YouTube Music.</p>
     </div>
+    <!-- Configuração do servidor (só aparece para quem abre no próprio computador do servidor) -->
+    <section id="setupCard" class="card setup" hidden>
+      <h2>Configurar Spotify <span class="muted">(uma vez só)</span></h2>
+      <ol class="steps">
+        <li>Abra o <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">painel de desenvolvedor do Spotify</a> e faça login.</li>
+        <li>Toque em <strong>Create app</strong>. Dê qualquer nome e descrição.</li>
+        <li>Em “Which API/SDKs are you planning to use?”, marque <strong>Web API</strong>.</li>
+        <li>Em <strong>Redirect URIs</strong>, cole este endereço e toque em <em>Add</em>:
+          <div class="copy-row">
+            <code id="redirectUri"></code>
+            <button id="copyRedirectBtn" class="btn small" type="button">Copiar</button>
+          </div>
+        </li>
+        <li>Salve, abra o app criado e copie o <strong>Client ID</strong>. Cole aqui:</li>
+      </ol>
+      <form id="setupForm" class="setup-row">
+        <input id="clientIdInput" maxlength="32" placeholder="Client ID (32 caracteres)" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="saveSetupBtn" class="btn primary" type="submit">Salvar</button>
+      </form>
+      <p class="hint muted">Não precisa de “Client Secret”. Cada pessoa só faz login com a própria conta.</p>
+      <p id="setupError" class="error" hidden></p>
+    </section>
+    <p id="spotifyNotice" class="notice muted" hidden>O Spotify ainda não foi configurado neste servidor. Dá para ouvir pelo YouTube normalmente.</p>
+
     <label class="field">
       <span>Seu nome</span>
       <input id="nameInput" maxlength="30" autocomplete="nickname" placeholder="Como os outros vão te ver">
     </label>
-    <button id="createBtn" class="btn primary">Criar uma jam</button>
-    <div class="divider"><span>ou</span></div>
+
+    <div id="createGroup" class="stack">
+      <button id="createSpotifyBtn" class="btn spotify-btn" hidden>Criar jam com Spotify</button>
+      <button id="createBtn" class="btn primary">Criar jam (ouvir no YouTube)</button>
+    </div>
+
+    <div class="divider"><span id="joinLabel">ou entre numa jam</span></div>
+    <input id="codeInput" maxlength="4" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off">
     <div class="join-row">
-      <input id="codeInput" maxlength="4" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off">
-      <button id="joinBtn" class="btn">Entrar</button>
+      <button id="joinSpotifyBtn" class="btn spotify-btn" hidden>Entrar e ouvir no Spotify</button>
+      <button id="joinBtn" class="btn">Entrar e ouvir no YouTube</button>
     </div>
     <p id="homeError" class="error" hidden></p>
   </main>
@@ -52,7 +82,7 @@
       <div class="media">
         <img id="art" alt="" hidden>
         <div id="ytWrap" hidden><div id="ytPlayer"></div></div>
-        <div id="ytHint" class="yt-hint" hidden>Toque no vídeo para liberar o som</div>
+        <button id="ytHint" class="yt-hint" type="button" hidden>Toque aqui para liberar o som</button>
         <div id="emptyArt" class="empty-art">♪</div>
       </div>
       <div class="meta">
@@ -65,7 +95,7 @@
       </div>
       <div class="controls">
         <button id="prevBtn" class="icon-btn" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5L9 12l10 7z"/></svg></button>
-        <button id="playBtn" class="play-btn" aria-label="Tocar/pausar">
+        <button id="playBtn" class="play-btn" aria-label="Tocar/pausar" data-playing="false">
           <svg id="icPlay" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>
           <svg id="icPause" viewBox="0 0 24 24" hidden><path d="M7 4h3v16H7zM14 4h3v16h-3z"/></svg>
         </button>
@@ -75,18 +105,18 @@
 
     <section class="listen">
       <div class="label muted">Ouvindo por</div>
-      <div class="segmented" role="radiogroup">
-        <button data-platform="spotify" class="seg spotify">Spotify</button>
-        <button data-platform="youtube" class="seg youtube">YouTube</button>
-        <button data-platform="none" class="seg">Só controlar</button>
+      <div class="segmented" id="platformSeg" role="radiogroup">
+        <button id="platformSpotify" data-platform="spotify" class="seg spotify" role="radio" aria-checked="false">Spotify</button>
+        <button id="platformYoutube" data-platform="youtube" class="seg youtube" role="radio" aria-checked="false">YouTube</button>
+        <button id="platformNone" data-platform="none" class="seg" role="radio" aria-checked="false">Só controlar</button>
       </div>
       <div id="platformStatus" class="status"></div>
     </section>
 
     <nav class="tabs">
-      <button data-tab="queue" class="tab active">Fila</button>
-      <button data-tab="search" class="tab">Buscar</button>
-      <button data-tab="people" class="tab">Pessoas <span id="peopleCount"></span></button>
+      <button id="tabQueue" data-tab="queue" class="tab active">Fila</button>
+      <button id="tabSearch" data-tab="search" class="tab">Buscar</button>
+      <button id="tabPeople" data-tab="people" class="tab">Pessoas <span id="peopleCount"></span></button>
     </nav>
 
     <section id="tab-queue" class="tab-panel">
@@ -97,11 +127,11 @@
     <section id="tab-search" class="tab-panel" hidden>
       <form id="searchForm" class="search-row">
         <input id="searchInput" type="search" placeholder="Música, artista ou link do YouTube" enterkeyhint="search">
-        <button class="btn primary" type="submit">Buscar</button>
+        <button id="searchBtn" class="btn primary" type="submit">Buscar</button>
       </form>
       <div class="segmented small" id="sourceSeg">
-        <button data-source="spotify" class="seg spotify">no Spotify</button>
-        <button data-source="youtube" class="seg youtube">no YouTube</button>
+        <button id="sourceSpotify" data-source="spotify" class="seg spotify" type="button">no Spotify</button>
+        <button id="sourceYoutube" data-source="youtube" class="seg youtube" type="button">no YouTube</button>
       </div>
       <p class="hint muted" id="sourceHint"></p>
       <ul id="searchList" class="list"></ul>

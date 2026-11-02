@@ -70,6 +70,27 @@ input:focus { border-color: var(--accent); }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .join-row { display: flex; gap: 10px; }
+.join-row .btn { flex: 1; white-space: normal; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.btn.spotify-btn { background: var(--spotify); border-color: transparent; color: #06140b; }
+.btn.small { padding: 7px 12px; font-size: 14px; border-radius: 10px; }
+.btn:disabled { opacity: .6; }
+.notice { font-size: 13px; text-align: center; margin: 0; }
+
+/* ---------- Configuração do Spotify ---------- */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.setup h2 { font-size: 17px; margin: 0 0 8px; }
+.setup h2 .muted { font-weight: 400; font-size: 14px; }
+.steps { margin: 0; padding-left: 20px; font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+.steps a { color: var(--accent); }
+.copy-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.copy-row code {
+  flex: 1; min-width: 0; overflow-wrap: anywhere;
+  background: var(--surface-2); border-radius: 8px; padding: 7px 9px; font-size: 13px;
+}
+.setup-row { display: flex; gap: 8px; margin-top: 10px; }
+.setup-row input { font-family: ui-monospace, monospace; font-size: 14px; }
+.error .link-btn, li.error .btn { margin-top: 8px; }
 #codeInput { text-transform: uppercase; letter-spacing: 4px; text-align: center; font-weight: 700; }
 
 /* ---------- Topo ---------- */
@@ -104,8 +125,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .media img:not([hidden]) ~ .empty-art, #ytWrap:not([hidden]) ~ .empty-art { display: none; }
 .yt-hint {
   position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
-  background: rgba(0,0,0,.8); padding: 6px 12px; border-radius: 999px; font-size: 13px;
-  pointer-events: none; white-space: nowrap;
+  background: rgba(0,0,0,.85); padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  white-space: nowrap; z-index: 1;
 }
 
 .meta { margin-top: 12px; }

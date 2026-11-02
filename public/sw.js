@@ -1,7 +1,7 @@
 // Service worker mínimo: guarda a "casca" do app para abrir rápido e permitir instalação.
 // Dados da sala são sempre em tempo real (Socket.IO), nunca do cache.
 
-const CACHE = 'jam-sync-v1';
+const CACHE = 'jam-sync-v3';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
