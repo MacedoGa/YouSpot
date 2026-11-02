@@ -235,7 +235,7 @@ function attachSockets(io) {
 
     socket.on('time', (_t, ack) => typeof ack === 'function' && ack(Date.now()));
 
-    socket.on('room:create', safe(({ name }) => enter(createRoom(sid, emitRoom), name)));
+    socket.on('room:create', safe(({ name }) => enter(createRoom(sid, emitRoom, { resolveTrack: resolveInRoom }), name)));
 
     socket.on('room:join', safe(({ code, name }) => {
       const r = getRoom(code);
@@ -244,7 +244,8 @@ function attachSockets(io) {
     }));
 
     socket.on('platform:set', safe(({ platform }) => {
-      if (!['spotify', 'youtube', 'none'].includes(platform)) throw new Error('Plataforma inválida.');
+      // ytmusic: app ponte Android que controla o app oficial do YouTube Music (sincroniza sozinho, como o PWA).
+      if (!['spotify', 'youtube', 'ytmusic', 'none'].includes(platform)) throw new Error('Plataforma inválida.');
       if (platform === 'spotify' && !spotify.isConfigured()) throw new Error('O Spotify ainda não foi configurado neste servidor.');
       if (platform === 'spotify' && !spotify.isConnected(sid)) return { needsAuth: true };
       const r = requireRoom();

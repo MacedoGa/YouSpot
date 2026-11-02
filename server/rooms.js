@@ -16,8 +16,16 @@ const SPOTIFY_PLAY_COMP_INITIAL_MS = 250;
 const SPOTIFY_SEEK_COMP_INITIAL_MS = 200;
 const SPOTIFY_COMP_MAX_MS = 2000;
 const LEARN_RATE = 0.7;
-const SPOTIFY_CHECK_INTERVAL_MS = 8000;
+// Também é o tempo máximo para a sala perceber o que alguém fez no app do Spotify.
+const SPOTIFY_CHECK_INTERVAL_MS = 3000;
 const SPOTIFY_GRACE_AFTER_COMMAND_MS = 3500;
+// Logo depois de uma mudança na sala os comandos ainda estão chegando aos aparelhos:
+// o que o Spotify mostra nesse intervalo não é ação de ninguém.
+const SPOTIFY_FOLLOW_SETTLE_MS = 4000;
+// Perto do fim da faixa o próprio Spotify pula para a próxima do álbum (não foi a pessoa).
+const SPOTIFY_END_GUARD_MS = 4000;
+// Por quanto tempo uma faixa mandada pelo servidor não conta como "a pessoa escolheu no app".
+const SPOTIFY_SENT_MEMORY_MS = 60_000;
 const SPOTIFY_FIRST_CHECK_MS = 4000; // primeira conferência depois de um play
 // Quem fecha a página (ex.: saiu para fazer login no Spotify) mantém o lugar por este tempo.
 const MEMBER_GRACE_MS = 2 * 60_000;
@@ -32,7 +40,10 @@ function newCode() {
 }
 
 class Room {
-  constructor(hostSid, onChange) {
+  // resolveTrack(room, trackId, sid): procura a faixa na outra plataforma (index.js).
+  constructor(hostSid, onChange, { resolveTrack } = {}) {
+    this.resolveTrack = resolveTrack || null;
+    this.playbackVersion = 0; // muda a cada troca de faixa/pausa/seek
     this.code = newCode();
     this.hostSid = hostSid;
     // sid -> { name, platform, sockets:Set, leaveTimer, spotify:{ deviceId, error, lastCommandAt, seq } }
@@ -283,19 +294,21 @@ class Room {
 
   // ---------- notificação + Spotify ----------
 
-  changed({ playback = false, spotifySids = [] } = {}) {
+  // exceptSid: quem originou a mudança pelo próprio app do Spotify (já está tocando certo).
+  changed({ playback = false, spotifySids = [], exceptSid = null } = {}) {
     this.lastActivity = Date.now();
     if (playback) {
+      this.playbackVersion++;
       this.scheduleEnd();
-      this.syncSpotify();
+      this.syncSpotify(exceptSid);
     } else {
       for (const sid of spotifySids) this.syncSpotifyMember(sid);
     }
     this.onChange(this);
   }
 
-  syncSpotify() {
-    for (const [sid, m] of this.members) if (m.platform === 'spotify') this.syncSpotifyMember(sid);
+  syncSpotify(exceptSid = null) {
+    for (const [sid, m] of this.members) if (m.platform === 'spotify' && sid !== exceptSid) this.syncSpotifyMember(sid);
   }
 
   async syncSpotifyMember(sid) {
@@ -317,7 +330,18 @@ class Room {
         const started = Date.now();
         // Compensa o tempo que o aparelho leva para começar a tocar (calibrado por membro).
         const comp = m.spotify.playCompMs;
-        const used = await spotify.player.play(sid, m.spotify.deviceId, { uri: t.spotifyUri, albumUri: t.spotifyAlbumUri }, () => this.currentPosition() + comp);
+        // Lembra o que o servidor mandou tocar: se o aparelho aparecer tocando isso depois,
+        // foi um comando atrasado, não a pessoa escolhendo no app.
+        const sent = (m.spotify.sentUris ||= new Map());
+        for (const [u, at] of sent) if (Date.now() - at > SPOTIFY_SENT_MEMORY_MS) sent.delete(u);
+        sent.set(t.spotifyUri, Date.now());
+        const used = await spotify.player.play(
+          sid,
+          m.spotify.deviceId,
+          { uri: t.spotifyUri, albumUri: t.spotifyAlbumUri },
+          () => this.currentPosition() + comp,
+          () => m.spotify.seq === seq
+        );
         latency = Date.now() - started;
         // O Spotify não tinha aparelho ativo e escolhemos um: passa a mandar sempre para ele.
         if (used && used !== m.spotify.deviceId && m.spotify.seq === seq) {
@@ -342,19 +366,18 @@ class Room {
     if (before !== error || deviceChanged) this.onChange(this);
   }
 
-  // Corrige quem saiu de sincronia (pausou no app, trocou de música, atrasou).
+  // Para cada membro do Spotify: segue o que ele fez no app (troca, pausa, seek) ou,
+  // se não fez nada, corrige quem saiu de sincronia (atrasou, o app parou sozinho).
   async checkSpotifyDrift() {
-    const t = this.current;
-    if (!t || !this.playing || !t.spotifyUri) return;
-    for (const sid of [...this.members.keys()]) await this.checkSpotifyMember(sid);
+    for (const [sid, m] of [...this.members]) if (m.platform === 'spotify') await this.checkSpotifyMember(sid);
   }
 
   async checkSpotifyMember(sid) {
     const m = this.members.get(sid);
-    const t = this.current;
-    if (!m || !t || !this.playing || !t.spotifyUri) return;
-    if (m.platform !== 'spotify' || !spotify.isConnected(sid)) return;
+    if (!m || m.platform !== 'spotify' || !spotify.isConnected(sid)) return;
     if (Date.now() - m.spotify.lastCommandAt < SPOTIFY_GRACE_AFTER_COMMAND_MS) return;
+    const t = this.current;
+    const version = this.playbackVersion;
     const seq = m.spotify.seq;
     try {
       const t0 = Date.now();
@@ -362,7 +385,9 @@ class Room {
       // O Spotify calcula progress_ms no meio do caminho entre o pedido e a resposta.
       const mid = (t0 + Date.now()) / 2;
       // O estado mudou enquanto esperava (novo comando, outra faixa, pausa): ignora.
-      if (m.spotify.seq !== seq || this.current !== t || !this.playing || m.platform !== 'spotify') return;
+      if (m.spotify.seq !== seq || this.playbackVersion !== version || m.platform !== 'spotify') return;
+      if (this.followSpotifyApp(sid, m, state, mid)) return;
+      if (!t || !this.playing || !t.spotifyUri) return;
       const sameTrack = state && state.is_playing && state.item?.uri === t.spotifyUri;
       const drift = sameTrack ? state.progress_ms - this.currentPosition(mid) : Infinity;
 
@@ -382,6 +407,109 @@ class Room {
         this.onChange(this);
       }
     }
+  }
+
+  // A pessoa mexeu no app do Spotify: a sala inteira acompanha. Retorna true se tratou.
+  followSpotifyApp(sid, m, state, mid) {
+    const item = state?.item;
+    if (!item?.uri || (item.type && item.type !== 'track')) return false; // nada tocando, podcast, anúncio
+    const now = Date.now();
+    if (now - this.updatedAt < SPOTIFY_FOLLOW_SETTLE_MS) return false;
+    const t = this.current;
+    const pos = state.progress_ms + (state.is_playing ? now - mid : 0);
+    const roomPos = this.currentPosition();
+    const nearRoomEnd = t && t.durationMs > 0 && roomPos >= t.durationMs - SPOTIFY_END_GUARD_MS;
+    const last = m.spotify.lastItem;
+    const nearSpotifyEnd =
+      last && last.durationMs > 0 && last.progressMs + (now - last.at) >= last.durationMs - SPOTIFY_END_GUARD_MS;
+
+    if (t && item.uri === t.spotifyUri) {
+      m.spotify.lastItem = {
+        uri: item.uri,
+        order: (item.disc_number || 1) * 1000 + (item.track_number || 0),
+        durationMs: item.duration_ms || 0,
+        progressMs: state.progress_ms,
+        at: mid,
+      };
+      if (this.playing && !state.is_playing && !nearRoomEnd) {
+        this.applyFromSpotify(sid, 'pausou', { positionMs: pos, playing: false });
+      } else if (!this.playing && state.is_playing && !this.ended) {
+        this.applyFromSpotify(sid, 'deu play', { positionMs: pos, playing: true });
+      } else if (this.playing && state.is_playing && Math.abs(pos - roomPos) >= SPOTIFY_DRIFT_TOLERANCE_MS) {
+        this.applyFromSpotify(sid, `pulou para ${Math.round(pos / 1000)}s`, { positionMs: pos, playing: true });
+      } else {
+        return false;
+      }
+      return true;
+    }
+
+    // Tocando outra música no app.
+    if (!state.is_playing) return false;
+    // Fim natural: o Spotify seguiu sozinho para a próxima do álbum; a sala troca pela fila.
+    if (nearRoomEnd || nearSpotifyEnd) return true;
+    // Faixa que o próprio servidor mandou há pouco (comando atrasado): só corrige.
+    const sentAt = m.spotify.sentUris?.get(item.uri);
+    if (sentAt && now - sentAt < SPOTIFY_SENT_MEMORY_MS) return false;
+
+    // Próxima/anterior no app: o Spotify anda pelo álbum em que mandamos tocar,
+    // então isso vira próxima/anterior da fila.
+    const sameContext = t?.spotifyAlbumUri && state.context?.uri === t.spotifyAlbumUri && last?.uri === t.spotifyUri;
+    if (sameContext) {
+      const order = (item.disc_number || 1) * 1000 + (item.track_number || 0);
+      m.spotify.lastItem = null;
+      if (order < last.order) {
+        console.log(`[spotify] ${m.name} voltou uma faixa no app`);
+        if (this.index > 0) this.jumpTo(this.index - 1);
+        else this.seek(0);
+      } else {
+        console.log(`[spotify] ${m.name} pulou para a próxima no app`);
+        this.next();
+      }
+      return true;
+    }
+
+    // Escolheu outra música (busca, playlist…): entra na fila logo depois da atual e toca para todos.
+    let idx = this.queue.findIndex((q, i) => i > this.index && q.spotifyUri === item.uri);
+    let created = null;
+    if (idx === -1) {
+      created = {
+        id: crypto.randomUUID(),
+        title: item.name || '',
+        artist: (item.artists || []).map((a) => a.name).join(', '),
+        album: item.album?.name || '',
+        art: item.album?.images?.[1]?.url || item.album?.images?.[0]?.url || '',
+        durationMs: item.duration_ms || 0,
+        isrc: item.external_ids?.isrc || null,
+        spotifyUri: item.uri,
+        spotifyAlbumUri: item.album?.uri || null,
+        youtubeId: null,
+        resolving: Boolean(this.resolveTrack),
+        addedBy: `${m.name} (pelo Spotify)`,
+      };
+      idx = this.index + 1;
+      this.queue.splice(idx, 0, created);
+    }
+    this.index = idx;
+    m.spotify.lastItem = null;
+    this.applyFromSpotify(sid, `escolheu "${item.name}"`, { positionMs: pos, playing: true });
+    if (created && this.resolveTrack) this.resolveTrack(this, created.id, sid);
+    return true;
+  }
+
+  applyFromSpotify(sid, what, { positionMs, playing }) {
+    const m = this.members.get(sid);
+    console.log(`[spotify] ${m?.name || sid} ${what} no app; a sala acompanha`);
+    this.positionMs = Math.max(0, positionMs);
+    this.playing = playing;
+    this.ended = false;
+    this.updatedAt = Date.now();
+    if (m) {
+      // O aparelho dele já está no estado novo: não manda comando, só confere depois.
+      m.spotify.seq++;
+      m.spotify.lastCommandAt = Date.now();
+      m.spotify.lastCommand = null;
+    }
+    this.changed({ playback: true, exceptSid: sid });
   }
 
   async fineSeekSpotify(sid, m, seq) {
@@ -431,8 +559,8 @@ class Room {
   }
 }
 
-function createRoom(hostSid, onChange) {
-  const room = new Room(hostSid, onChange);
+function createRoom(hostSid, onChange, options) {
+  const room = new Room(hostSid, onChange, options);
   rooms.set(room.code, room);
   return room;
 }

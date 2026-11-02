@@ -1,0 +1,61 @@
+name: App ponte (Android)
+
+on:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      # Mesma chave de assinatura a cada build: assim dá para instalar a versão nova por cima.
+      - name: Chave de assinatura
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: youspot-ponte-keystore-v1
+
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+      # Erros viram anotações (aparecem na página do Actions e na API pública).
+      - name: Mostrar erros de compilação
+        if: failure()
+        working-directory: android
+        run: |
+          grep -E "^e: |error:|What went wrong|Could not|Execution failed" -A2 build.log | head -40 | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line}"
+          done
+
+      - name: Publicar APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk youspot-ponte.apk
+          gh release view ponte-latest >/dev/null 2>&1 || gh release create ponte-latest \
+            --target "${{ github.sha }}" \
+            --title "App ponte do YouTube Music (Android)" \
+            --notes "Abra este link no celular Android e instale o youspot-ponte.apk." \
+            --latest
+          gh release upload ponte-latest youspot-ponte.apk --clobber
+          echo "APK: https://github.com/${{ github.repository }}/releases/latest/download/youspot-ponte.apk" >> "$GITHUB_STEP_SUMMARY"

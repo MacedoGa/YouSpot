@@ -93,7 +93,10 @@ function createMock() {
       name: t.name,
       duration_ms: t.durationMs,
       artists: t.artists.map((name) => ({ name })),
-      album: { uri: `spotify:album:alb${t.id}`, name: t.album || '', images: [{ url: 'https://i.scdn.co/image/x640' }, { url: 'https://i.scdn.co/image/x300' }] },
+      type: 'track',
+      track_number: t.trackNumber || 1,
+      disc_number: 1,
+      album: { uri: `spotify:album:${t.albumId || `alb${t.id}`}`, name: t.album || '', images: [{ url: 'https://i.scdn.co/image/x640' }, { url: 'https://i.scdn.co/image/x300' }] },
     };
   }
 
@@ -221,7 +224,12 @@ function createMock() {
         progress_ms: Math.round(progressOf(p)),
         timestamp: Date.now(),
         currently_playing_type: 'track',
-        item: { uri: p.uri, id: p.uri.split(':').pop(), name: 'x', duration_ms: 600000 },
+        // Como o Spotify real: a faixa completa (se estiver no catálogo) e o contexto (álbum/playlist).
+        item: (() => {
+          const hit = state.spotifyCatalog.find((t) => `spotify:track:${t.id}` === p.uri);
+          return hit ? mapSpotifyTrack(hit) : { type: 'track', uri: p.uri, id: p.uri.split(':').pop(), name: 'x', duration_ms: 600000 };
+        })(),
+        context: p.contextUri ? { uri: p.contextUri, type: p.contextUri.split(':')[1] } : null,
       });
     }
     if (req.method === 'GET' && path === '/me') return send(res, 200, { id: user, display_name: `Conta ${user}` });
@@ -252,6 +260,7 @@ function createMock() {
       state.playerCalls.push({ user, op: 'play', uris: trackUri ? [trackUri] : null, contextUri: body.context_uri || null, position_ms: body.position_ms, deviceId: url.searchParams.get('device_id'), at: Date.now() });
       if (trackUri) {
         p.uri = trackUri;
+        p.contextUri = body.context_uri || null;
         p.progressMs = Number(body.position_ms) || 0;
       } else {
         p.progressMs = progressOf(p);
@@ -444,8 +453,9 @@ function createMock() {
       return new Promise((r) => server.close(() => r()));
     },
     // ---- configuração pelo teste ----
-    addSpotifyTrack({ id, name, artists, durationMs, album = '' }) {
-      state.spotifyCatalog.push({ id, name, artists: [].concat(artists), durationMs, album });
+    // albumId/trackNumber: várias faixas no mesmo álbum (próxima/anterior no app andam por ele).
+    addSpotifyTrack({ id, name, artists, durationMs, album = '', albumId = null, trackNumber = 1 }) {
+      state.spotifyCatalog.push({ id, name, artists: [].concat(artists), durationMs, album, albumId, trackNumber });
     },
     addYoutubeVideo({ id, title, channelTitle, durationMs, embeddable = true }) {
       state.youtubeVideos.set(id, { id, title, channelTitle, durationMs, embeddable });

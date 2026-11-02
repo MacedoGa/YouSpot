@@ -629,6 +629,13 @@ function render() {
   });
   renderPlatformStatus(t);
 
+  // Android: o app ponte toca no app oficial do YouTube Music (com a tela bloqueada).
+  $('ytmBridge').hidden = !IS_ANDROID;
+  if (IS_ANDROID) {
+    const name = store.get('name') || '';
+    $('ytmOpen').href = `youspot://join?${new URLSearchParams({ server: location.origin, room: state.code, name })}`;
+  }
+
   // Fila
   $('queueEmpty').hidden = state.queue.length > 0;
   $('queueList').innerHTML = state.queue
@@ -658,7 +665,7 @@ function render() {
   // Pessoas
   const online = state.members.filter((m) => m.online || m.platform === 'spotify');
   $('peopleCount').textContent = online.length ? `(${online.length})` : '';
-  const platformName = { spotify: 'Spotify', youtube: 'YouTube', none: 'só controlando' };
+  const platformName = { spotify: 'Spotify', youtube: 'YouTube', ytmusic: 'YouTube Music (app)', none: 'só controlando' };
   $('peopleList').innerHTML = state.members
     .map(
       (m) => `
@@ -758,6 +765,8 @@ let ytCuedAt = 0; // posição (s) usada no último cue com a sala pausada
 let ytErrorKey = null; // faixa que o YouTube recusou — não insiste nela
 let ytLastCmd = 0; // último seek/play/load enviado
 let ytStuckSince = 0; // desde quando deveria estar tocando e não está
+
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
 
 // O player embutido do YouTube recusa (erro 150) qualquer vídeo quando a página é aberta por IP.
 const ON_IP_HOST = /^(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])$/i.test(location.hostname);

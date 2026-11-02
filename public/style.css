@@ -170,6 +170,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   border: 1px solid var(--border); border-radius: 10px; padding: 9px;
 }
 .link-btn { color: var(--accent); font-weight: 600; padding: 4px 0; }
+.small-link { font-size: 13px; }
 
 /* ---------- Abas ---------- */
 .tabs {

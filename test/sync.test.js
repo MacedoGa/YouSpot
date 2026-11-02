@@ -400,19 +400,131 @@ describe('membro no Spotify', () => {
     await expectPlay(since, tracks[1].spotifyUri, 'prev');
   });
 
-  it('drift: Spotify tocando outra música é corrigido pelo servidor', { timeout: 40000 }, async () => {
+  it('Spotify que parou de tocar sozinho (nada tocando) recebe a faixa da sala de novo', { timeout: 40000 }, async () => {
     const s = r.host.last('state');
     const uri = s.queue[s.index].spotifyUri;
     await sleep(6500); // passa o período de carência após o último comando
-    stack.mock.setPlayer(USER, { uri: 'spotify:track:musicaErrada', isPlaying: true, progressMs: 1000 });
+    stack.mock.setPlayer(USER, { uri: null, isPlaying: false, progressMs: 0 });
     const since = plays(0).length;
     const call = await stack.mock.waitFor(() => plays(since).find((c) => c.op === 'play' && c.uris?.[0] === uri), {
       timeoutMs: 20000,
       intervalMs: 100,
-      message: 'correção de drift (PUT play com a faixa da sala)',
+      message: 'correção (PUT play com a faixa da sala)',
     });
     const expected = statePositionAt(r.host.last('state'), call.at);
     assert.ok(Math.abs(call.position_ms - expected) <= SPOTIFY_TOL, `drift: position_ms ${call.position_ms} vs ${Math.round(expected)}`);
+  });
+});
+
+describe('app do Spotify como controle da sala', () => {
+  const USER = 'ctl-user';
+  const ALB = 'spotify:album:albCtl';
+  let r;
+  let sp; // membro que ouve pelo Spotify e mexe no app
+  const plays = (since) => stack.mock.playerCallsFor(USER).slice(since);
+  const appPos = () => {
+    const p = stack.mock.player(USER);
+    return p.isPlaying ? p.progressMs + (Date.now() - p.at) : p.progressMs;
+  };
+  const roomPos = (s) => statePositionAt(s, Date.now());
+  // Depois de uma mudança na sala, espera os comandos assentarem e o servidor registrar o que está tocando.
+  const settle = () => sleep(8000);
+  const q = (id, albumId) => ({
+    title: id,
+    artist: 'Banda',
+    durationMs: 240000,
+    youtubeId: `yt${id}`.padEnd(11, 'x').slice(0, 11),
+    spotifyUri: `spotify:track:${id}`,
+    spotifyAlbumUri: `spotify:album:${albumId}`,
+  });
+
+  before(async () => {
+    // Álbum com 3 faixas: a fila toca a do meio (ctl2); a próxima da fila é de outro álbum.
+    stack.mock.addSpotifyTrack({ id: 'ctl1', name: 'Ctl Um', artists: ['Banda'], durationMs: 240000, albumId: 'albCtl', trackNumber: 1 });
+    stack.mock.addSpotifyTrack({ id: 'ctl2', name: 'Ctl Dois', artists: ['Banda'], durationMs: 240000, albumId: 'albCtl', trackNumber: 2 });
+    stack.mock.addSpotifyTrack({ id: 'ctl3', name: 'Ctl Tres', artists: ['Banda'], durationMs: 240000, albumId: 'albCtl', trackNumber: 3 });
+    stack.mock.addSpotifyTrack({ id: 'prox1', name: 'Proxima Fila', artists: ['Outra'], durationMs: 240000, albumId: 'albProx', trackNumber: 2 });
+    stack.mock.addSpotifyTrack({ id: 'escolhida1', name: 'Escolhida No App', artists: ['Cantora'], durationMs: 200000, albumId: 'albEsc', trackNumber: 4 });
+    stack.mock.addYoutubeVideo({ id: 'ytEscolhida', title: 'Cantora - Escolhida No App', channelTitle: 'Cantora - Topic', durationMs: 200000 });
+
+    r = await makeRoom(2, 'Ctl');
+    sp = r.others[0];
+    await spotifyLogin(stack, { sid: sp.sid, room: r.code, intent: 'join', name: 'Ctl1', user: USER });
+    await ok(sp.emit('platform:set', { platform: 'spotify' }), 'platform:set');
+    await ok(r.host.emit('queue:add', { track: q('ctl2', 'albCtl') }), 'add 1');
+    await ok(r.host.emit('queue:add', { track: q('prox1', 'albProx') }), 'add 2');
+    await stack.mock.waitFor(() => plays(0).find((c) => c.op === 'play' && (c.uris?.[0] || '').endsWith('ctl2')), { message: 'play inicial' });
+    await settle();
+  });
+
+  it('pausar no app pausa a sala para todos', { timeout: 30000 }, async () => {
+    stack.mock.setPlayer(USER, { isPlaying: false });
+    const states = await converge(r.all, (s) => !s.playing, 8000);
+    assert.ok(Math.abs(states[0].positionMs - appPos()) < 1000, `posição ${states[0].positionMs} vs app ${appPos()}`);
+  });
+
+  it('dar play no app volta a tocar a sala', { timeout: 30000 }, async () => {
+    await settle();
+    stack.mock.setPlayer(USER, { isPlaying: true });
+    const states = await converge(r.all, (s) => s.playing, 8000);
+    assert.ok(Math.abs(roomPos(states[0]) - appPos()) < 1000);
+  });
+
+  it('pular para outro ponto no app move a sala', { timeout: 30000 }, async () => {
+    await settle();
+    stack.mock.setPlayer(USER, { progressMs: 120000 });
+    await converge(r.all, (s) => s.playing && roomPos(s) > 115000, 8000);
+    assert.ok(Math.abs(roomPos(r.host.last('state')) - appPos()) < 1000);
+  });
+
+  it('"próxima" no app (anda pelo álbum) vira próxima da fila; o Spotify vai para a faixa da fila', { timeout: 30000 }, async () => {
+    await settle();
+    const since = plays(0).length;
+    stack.mock.setPlayer(USER, { uri: 'spotify:track:ctl3', contextUri: ALB, isPlaying: true, progressMs: 0 });
+    const states = await converge(r.all, (s) => s.index === 1, 8000);
+    assert.strictEqual(states[0].queue.length, 2, 'não deveria adicionar a faixa do álbum na fila');
+    await stack.mock.waitFor(() => plays(since).find((c) => c.op === 'play' && (c.uris?.[0] || '').endsWith('prox1')), {
+      message: 'PUT play com a próxima da fila',
+    });
+  });
+
+  it('"anterior" no app volta uma faixa na fila', { timeout: 30000 }, async () => {
+    await settle();
+    // A faixa atual (prox1) é a 2ª do álbum dela; o app volta para a 1ª do mesmo contexto.
+    stack.mock.addSpotifyTrack({ id: 'prox0', name: 'Antes', artists: ['Outra'], durationMs: 240000, albumId: 'albProx', trackNumber: 1 });
+    stack.mock.setPlayer(USER, { uri: 'spotify:track:prox0', contextUri: 'spotify:album:albProx', isPlaying: true, progressMs: 0 });
+    await converge(r.all, (s) => s.index === 0, 8000);
+  });
+
+  it('escolher outra música no app coloca ela na fila depois da atual e toca para todos', { timeout: 40000 }, async () => {
+    await settle();
+    const since = plays(0).length;
+    stack.mock.setPlayer(USER, { uri: 'spotify:track:escolhida1', contextUri: 'spotify:playlist:minha', isPlaying: true, progressMs: 5000 });
+    const states = await converge(r.all, (s) => s.queue.length === 3 && s.index === 1, 8000);
+    const t = states[0].queue[1];
+    assert.strictEqual(t.title, 'Escolhida No App');
+    assert.strictEqual(t.spotifyUri, 'spotify:track:escolhida1');
+    assert.match(t.addedBy, /pelo Spotify/);
+    assert.ok(Math.abs(roomPos(states[0]) - appPos()) < 1500, 'sala na posição do app');
+    // Quem escolheu já está tocando: não recebe comando de play.
+    await sleep(1500);
+    assert.ok(!plays(since).some((c) => c.op === 'play'), `não deveria mandar play: ${JSON.stringify(plays(since))}`);
+    // O vídeo do YouTube é procurado sozinho.
+    const withVideo = await r.host.waitFor('state', (s) => s.queue[1]?.youtubeId === 'ytEscolhida', 8000);
+    assert.ok(withVideo);
+  });
+
+  it('fim natural da música: o Spotify seguir sozinho para a próxima do álbum não muda a fila', { timeout: 40000 }, async () => {
+    const short = { ...q('ctl1', 'albCtl'), durationMs: 14000 };
+    await ok(r.host.emit('queue:add', { track: short }), 'add curta');
+    const idx = r.host.last('state').queue.length - 1;
+    await ok(r.host.emit('player:jump', { index: idx }), 'jump');
+    await sleep(11000); // perto do fim (faltam ~3s)
+    stack.mock.setPlayer(USER, { uri: 'spotify:track:ctl2', contextUri: ALB, isPlaying: true, progressMs: 0 });
+    await sleep(2500);
+    const s = r.host.last('state');
+    assert.strictEqual(s.index, idx, 'ainda na faixa curta (a sala decide quando acaba)');
+    assert.strictEqual(s.queue.length, idx + 1, 'não adicionou a faixa do álbum');
   });
 });
 

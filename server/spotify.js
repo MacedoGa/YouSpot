@@ -408,7 +408,9 @@ const player = {
   // Toca a faixa num aparelho específico e confere se ele realmente começou.
   // positionMs pode ser número ou função (recalculada a cada tentativa, porque cada uma leva tempo).
   // Retorna o id do aparelho usado (a sala passa a mandar sempre para ele).
-  play: async (sid, deviceId, track, positionMs) => {
+  // stillWanted(): false quando já existe um comando mais novo; aí as novas tentativas param
+  // (senão uma repetição atrasada deixa o aparelho tocando a faixa antiga).
+  play: async (sid, deviceId, track, positionMs, stillWanted = () => true) => {
     const { uri, albumUri } = typeof track === 'string' ? { uri: track, albumUri: null } : track;
     const pos = () => Math.max(0, Math.round(typeof positionMs === 'function' ? positionMs() : positionMs));
     // Falha do Spotify (out/2026): no Android, play com `uris` responde 204 e não toca nada.
@@ -452,6 +454,7 @@ const player = {
     let state = await waitForPlayback(sid, uri, target);
     // Tenta as outras formas de comando (álbum -> faixa avulsa) e, por fim, transfere e repete.
     while (!state.ok && attempt < bodies.length) {
+      if (!stillWanted()) return target;
       attempt++;
       const how = attempt < bodies.length ? 'como faixa avulsa' : 'depois de transferir';
       console.warn(`[spotify] ${deviceLabel(target)} não começou a tocar (${describeState(state.raw)}). Tentando ${how}…`);
