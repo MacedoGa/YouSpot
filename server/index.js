@@ -89,7 +89,7 @@ function createApp({ getBaseUrl }) {
     if (pendingStates.size > 5000) return res.status(429).send('Muitos logins em andamento. Tente de novo em alguns minutos.');
     const state = crypto.randomBytes(16).toString('hex');
     const { verifier, challenge } = spotify.createPkce();
-    const intent = ['create', 'join'].includes(req.query.intent) ? req.query.intent : '';
+    const intent = ['create', 'join', 'capsule'].includes(req.query.intent) ? req.query.intent : '';
     const uri = redirectUri();
     pendingStates.set(state, {
       sid,
@@ -121,8 +121,9 @@ function createApp({ getBaseUrl }) {
         redirectUri: pending.redirectUri,
       });
       // Se o membro ainda está na sala (período de graça), já passa a ouvir pelo Spotify.
+      // (Quem só foi ver a cápsula continua ouvindo onde estava.)
       const room = getRoom(pending.room);
-      if (room?.members.has(pending.sid)) room.setPlatform(pending.sid, 'spotify');
+      if (room?.members.has(pending.sid) && pending.intent !== 'capsule') room.setPlatform(pending.sid, 'spotify');
       retryMissingSpotify(room, pending.sid);
       back('ok');
     } catch (err) {
@@ -265,6 +266,20 @@ function attachSockets(io) {
       spotify.disconnect(sid);
       room?.setPlatform(sid, 'none');
     }));
+
+    // Cápsula sonora: precisa do Spotify conectado com os escopos de estatísticas.
+    const stats = (fn) => safe(async (payload) => {
+      if (!spotify.isConfigured()) throw new Error('O Spotify ainda não foi configurado neste servidor.');
+      if (!spotify.isConnected(sid) || !spotify.hasStatsScopes(sid)) return { needsAuth: true };
+      try {
+        return await fn(payload);
+      } catch (err) {
+        if (err.reason === 'SCOPE' || err.status === 401) return { needsAuth: true };
+        throw err;
+      }
+    });
+    socket.on('capsule:top', stats(({ range }) => spotify.topItems(sid, String(range || ''))));
+    socket.on('capsule:recent', stats(async () => ({ items: await spotify.recentlyPlayed(sid) })));
 
     socket.on('search', safe(async ({ q, source }) => {
       q = String(q || '').trim().slice(0, 120);

@@ -49,6 +49,11 @@ function createMock() {
     youtubeSearches: [],
     youtubeKey: 'fake',
     playerFailure: null, // (user, op) => { status, body } | null
+    grantedScope: null, // string: força o escopo concedido (simula login antigo)
+    topArtists: [], // formato da API
+    topTracks: [], // ids do catálogo
+    recentlyPlayed: [], // { id (catálogo), playedAt (ISO) }
+    statsRequests: [], // { path, query, user }
   };
 
   let seq = 0;
@@ -128,12 +133,13 @@ function createMock() {
     send(res, 302, undefined, { Location: target.toString() });
   }
 
-  function issueUserTokens(user) {
+  function issueUserTokens(user, requested) {
     const access = newToken('at');
     const refresh = newToken('rt');
-    state.accessTokens.set(access, { user, kind: 'user' });
-    state.refreshTokens.set(refresh, user);
-    return { access_token: access, token_type: 'Bearer', expires_in: state.tokenExpiresIn, refresh_token: refresh, scope: 'user-read-playback-state user-modify-playback-state user-read-currently-playing' };
+    const scope = state.grantedScope ?? requested ?? 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
+    state.accessTokens.set(access, { user, kind: 'user', scope });
+    state.refreshTokens.set(refresh, { user, scope });
+    return { access_token: access, token_type: 'Bearer', expires_in: state.tokenExpiresIn, refresh_token: refresh, scope };
   }
 
   function handleToken(req, res, rawBody) {
@@ -165,15 +171,15 @@ function createMock() {
         return reply(400, { error: 'invalid_grant', error_description: 'code_verifier was incorrect' });
       }
       auth.used = true;
-      return reply(200, issueUserTokens(auth.user));
+      return reply(200, issueUserTokens(auth.user, auth.scope));
     }
     if (params.grant_type === 'refresh_token') {
-      const user = state.refreshTokens.get(params.refresh_token);
-      if (!user) return reply(400, { error: 'invalid_grant', error_description: 'Invalid refresh token' });
+      const prev = state.refreshTokens.get(params.refresh_token);
+      if (!prev) return reply(400, { error: 'invalid_grant', error_description: 'Invalid refresh token' });
       if (!(params.client_id || basicId)) return reply(400, { error: 'invalid_client', error_description: 'client_id ausente' });
       // Spotify (PKCE) pode rotacionar o refresh token
       state.refreshTokens.delete(params.refresh_token);
-      return reply(200, issueUserTokens(user));
+      return reply(200, issueUserTokens(prev.user, prev.scope));
     }
     if (params.grant_type === 'client_credentials') {
       const id = basicId || params.client_id;
@@ -213,6 +219,20 @@ function createMock() {
     if (state.playerFailure && path.startsWith('/me/player')) {
       const f = state.playerFailure(user, `${req.method} ${path}`);
       if (f) return send(res, f.status, f.body);
+    }
+
+    const top = /^\/me\/top\/(artists|tracks)$/.exec(path);
+    if (req.method === 'GET' && (top || path === '/me/player/recently-played')) {
+      state.statsRequests.push({ path, query: Object.fromEntries(url.searchParams), user });
+      const need = top ? 'user-top-read' : 'user-read-recently-played';
+      if (!String(who.scope || '').split(' ').includes(need)) return apiError(res, 403, 'Insufficient client scope');
+      const limit = Number(url.searchParams.get('limit') || 20);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) return apiError(res, 400, 'Invalid limit');
+      const byId = (id) => state.spotifyCatalog.find((t) => t.id === id);
+      if (top?.[1] === 'artists') return send(res, 200, { items: state.topArtists.slice(0, limit), limit });
+      if (top) return send(res, 200, { items: state.topTracks.map(byId).filter(Boolean).slice(0, limit).map(mapSpotifyTrack), limit });
+      const items = state.recentlyPlayed.slice(0, limit).map((r) => ({ track: mapSpotifyTrack(byId(r.id)), played_at: r.playedAt }));
+      return send(res, 200, { items, limit });
     }
 
     if (req.method === 'GET' && path === '/me/player/devices') return send(res, 200, { devices: p.devices });

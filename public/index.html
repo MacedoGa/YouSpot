@@ -63,6 +63,19 @@
       <button id="joinBtn" class="btn">Entrar e ouvir no YouTube</button>
     </div>
     <p id="homeError" class="error" hidden></p>
+    <button id="capsuleHomeBtn" class="btn cap-home-btn" type="button">🎧 Minha cápsula sonora</button>
+  </main>
+
+  <!-- Cápsula sonora fora da sala -->
+  <main id="capsuleScreen" class="screen" hidden>
+    <header class="topbar">
+      <button id="capsuleBackBtn" class="icon-btn" aria-label="Voltar">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <strong>Cápsula sonora</strong>
+      <span class="icon-btn"></span>
+    </header>
+    <div id="capsuleScreenBody"></div>
   </main>
 
   <!-- Sala -->
@@ -121,6 +134,7 @@
       <button id="tabQueue" data-tab="queue" class="tab active">Fila</button>
       <button id="tabSearch" data-tab="search" class="tab">Buscar</button>
       <button id="tabPeople" data-tab="people" class="tab">Pessoas <span id="peopleCount"></span></button>
+      <button id="tabCapsule" data-tab="capsule" class="tab">Cápsula</button>
     </nav>
 
     <section id="tab-queue" class="tab-panel">
@@ -144,11 +158,74 @@
     <section id="tab-people" class="tab-panel" hidden>
       <ul id="peopleList" class="list"></ul>
     </section>
+
+    <section id="tab-capsule" class="tab-panel" hidden>
+      <!-- #capsuleBody mora aqui ou na tela da cápsula (capsule.js move entre os dois) -->
+      <div id="capsuleBody" class="capsule">
+        <div id="capConnect" class="card cap-connect" hidden>
+          <p id="capConnectMsg"></p>
+          <button id="capConnectBtn" class="btn spotify-btn" type="button">Conectar Spotify</button>
+        </div>
+
+        <section class="cap-section">
+          <h2>Mais ouvidos</h2>
+          <div class="segmented small" id="capRangeSeg">
+            <button data-range="short_term" class="seg" type="button">4 semanas</button>
+            <button data-range="medium_term" class="seg" type="button">6 meses</button>
+            <button data-range="long_term" class="seg" type="button">1 ano</button>
+          </div>
+          <p id="capTopStatus" class="hint muted"></p>
+          <div id="capTopLists" hidden>
+            <h3>Artistas</h3>
+            <ol id="capArtists" class="list cap-artists"></ol>
+            <h3>Músicas</h3>
+            <ol id="capTracks" class="list"></ol>
+          </div>
+        </section>
+
+        <section class="cap-section">
+          <h2>Seu mês</h2>
+          <div class="cap-month-nav">
+            <button id="capPrev" class="icon-btn" type="button" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <strong id="capMonthLabel"></strong>
+            <button id="capNext" class="icon-btn" type="button" aria-label="Próximo mês"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+          </div>
+          <div class="cap-stats">
+            <div class="cap-stat"><strong id="capMinutes">0</strong><span>minutos ouvidos</span></div>
+            <div class="cap-stat"><strong id="capPlays">0</strong><span>músicas tocadas</span></div>
+            <div class="cap-stat"><strong id="capArtistCount">0</strong><span>artistas</span></div>
+          </div>
+          <p id="capCoverage" class="hint muted"></p>
+          <div id="capMonthLists">
+            <h3>Artistas do mês</h3>
+            <ol id="capMonthArtists" class="list cap-artists"></ol>
+            <h3>Músicas do mês</h3>
+            <ol id="capMonthTracks" class="list"></ol>
+          </div>
+        </section>
+
+        <details class="card cap-import">
+          <summary>Importar seu histórico completo do Spotify</summary>
+          <p class="hint muted">O Spotify só informa as suas últimas 50 músicas. Com o arquivo de dados da sua conta, a cápsula mostra o tempo exato de cada mês, desde quando você usa o Spotify.</p>
+          <ol class="steps">
+            <li>Abra a <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">página de privacidade da sua conta Spotify</a>.</li>
+            <li>Em <strong>Baixar seus dados</strong>, marque <strong>Histórico de streaming estendido</strong> e peça os dados.</li>
+            <li>Confirme no e-mail. Em alguns dias o Spotify manda um link com um arquivo <strong>.zip</strong>.</li>
+            <li>Escolha esse .zip aqui (ou os arquivos .json de dentro dele):</li>
+          </ol>
+          <input id="capFile" type="file" accept=".zip,.json,application/zip,application/json" multiple hidden>
+          <button id="capImportBtn" class="btn" type="button">Escolher arquivo</button>
+          <p id="capImportStatus" class="hint muted"></p>
+          <p class="hint muted">O arquivo é lido só neste aparelho: nada é enviado para o servidor.</p>
+        </details>
+      </div>
+    </section>
   </main>
 
   <div id="toast" class="toast" hidden></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/app.js"></script>
+  <script src="/capsule.js"></script>
 </body>
 </html>

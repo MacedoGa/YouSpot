@@ -179,7 +179,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.tab { flex: 1; padding: 10px; font-weight: 600; color: var(--muted); border-radius: 10px; }
+.tab { flex: 1; padding: 10px 4px; font-weight: 600; color: var(--muted); border-radius: 10px; }
 .tab.active { color: var(--text); background: var(--surface); }
 
 .search-row { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -236,3 +236,32 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px);
   box-shadow: 0 8px 30px rgba(0,0,0,.4); z-index: 10; font-size: 14px;
 }
+
+/* ---------- Cápsula sonora ---------- */
+.cap-home-btn { margin-top: 6px; }
+#capsuleScreen .topbar strong { font-size: 17px; }
+.cap-connect { display: flex; flex-direction: column; gap: 10px; text-align: center; margin-bottom: 8px; }
+.cap-connect p { margin: 0; font-size: 14px; }
+.cap-section { margin-top: 14px; }
+.cap-section h2 { font-size: 20px; margin: 0 0 10px; }
+.cap-section h3 { font-size: 14px; margin: 16px 0 4px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.item .rank { width: 22px; text-align: center; font-weight: 700; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.item .count { font-size: 13px; color: var(--muted); flex-shrink: 0; text-align: right; }
+.cap-artists .item img, .cap-artists .item .ph { border-radius: 50%; }
+.cap-artists > li:first-child .item img, .cap-artists > li:first-child .item .ph { width: 64px; height: 64px; }
+.cap-artists > li:first-child .item .t { font-size: 18px; }
+.cap-artist { width: 100%; text-align: left; }
+.cap-artist .chev { color: var(--muted); transition: transform .15s; width: 18px; height: 18px; flex-shrink: 0; }
+.cap-artist[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.cap-songs { list-style: none; margin: 0 0 8px 42px; padding: 0; border-left: 2px solid var(--border); }
+.cap-songs li { font-size: 14px; padding: 5px 10px; display: flex; justify-content: space-between; gap: 8px; }
+.cap-songs li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-month-nav { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border-radius: 12px; }
+.cap-month-nav .icon-btn:disabled { opacity: .3; }
+.cap-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.cap-stat { background: var(--surface); border-radius: 12px; padding: 12px 6px; text-align: center; }
+.cap-stat strong { display: block; font-size: 24px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.cap-stat span { font-size: 12px; color: var(--muted); }
+.cap-import { margin-top: 22px; }
+.cap-import summary { font-weight: 600; cursor: pointer; }
+.cap-import .btn { margin-top: 10px; }

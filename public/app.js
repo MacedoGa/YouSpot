@@ -231,6 +231,7 @@ async function enterRoom(event, payload) {
   $('roomCode').textContent = roomCode;
   showHomeError('');
   $('home').hidden = true;
+  $('capsuleScreen').hidden = true;
   $('room').hidden = false;
   if (state) {
     render();
@@ -241,6 +242,7 @@ async function enterRoom(event, payload) {
 
 function showHome() {
   $('room').hidden = true;
+  $('capsuleScreen').hidden = true;
   $('home').hidden = false;
 }
 
@@ -404,6 +406,19 @@ async function handleSpotifyReturn(sp) {
   }
   let room = (params.get('room') || pending.room || '').trim().toUpperCase();
   if (!room && intent !== 'create') room = (store.get('room') || '').toUpperCase();
+
+  if (intent === 'capsule') {
+    // Volta para onde estava (sala ou tela inicial) já com a cápsula aberta.
+    if (room) {
+      if (!(await enterRoom('room:join', { code: room }))) return;
+      openCapsule('tab');
+    } else {
+      history.replaceState(null, '', '/');
+      openCapsule('screen');
+    }
+    toast(sp === 'ok' ? 'Spotify conectado!' : SPOTIFY_MSG[sp] || SPOTIFY_MSG.error);
+    return;
+  }
 
   if (sp === 'ok') {
     let ok = false;

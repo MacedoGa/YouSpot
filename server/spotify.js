@@ -9,7 +9,16 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'user-read-currently-playing'];
+const SCOPES = [
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'user-read-currently-playing',
+  // Cápsula sonora
+  'user-top-read',
+  'user-read-recently-played',
+];
+const STATS_SCOPES = ['user-top-read', 'user-read-recently-played'];
+const TOP_RANGES = ['short_term', 'medium_term', 'long_term'];
 const SEARCH_MAX_LIMIT = 10; // limite da Web API em dev mode (fev/2026)
 const CLIENT_ID_RE = /^[0-9a-f]{32}$/i;
 const NEED_LOGIN_MSG = 'Conecte o Spotify para buscar no catálogo do Spotify.';
@@ -170,6 +179,7 @@ async function handleCallback(sid, code, { codeVerifier, redirectUri }) {
     refresh: body.refresh_token || null,
     expiresAt: Date.now() + (body.expires_in || 3600) * 1000,
     clientId: clientId(),
+    scope: body.scope || '',
   };
   persistTokens();
   accountName(sid).catch(() => {});
@@ -201,6 +211,7 @@ async function getUserToken(sid) {
       const body = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh, client_id: clientId() });
       t.access = body.access_token;
       if (body.refresh_token) t.refresh = body.refresh_token;
+      if (body.scope) t.scope = body.scope;
       t.expiresAt = Date.now() + (body.expires_in || 3600) * 1000;
       persistTokens();
       return t.access;
@@ -326,6 +337,70 @@ async function userRequest(sid, method, pathAndQuery, body) {
     throw new SpotifyPlayerError(msg, res.status, reason);
   }
   return data;
+}
+
+// ---------- cápsula sonora (mais ouvidos e histórico recente) ----------
+
+// Logins antigos não pediram os escopos da cápsula: a pessoa precisa entrar de novo.
+function hasStatsScopes(sid) {
+  const t = tokens()[sid];
+  if (!t) return false;
+  if (t.scope === undefined) return true; // token de antes de guardarmos o escopo: deixa a API decidir
+  const granted = new Set(String(t.scope).split(/\s+/));
+  return STATS_SCOPES.every((s) => granted.has(s));
+}
+
+const smallestImage = (images, min = 160) => {
+  const list = (images || []).filter((i) => i?.url);
+  if (!list.length) return '';
+  const fit = list.filter((i) => (i.width || 0) >= min).sort((a, b) => (a.width || 0) - (b.width || 0));
+  return (fit[0] || list[0]).url;
+};
+
+const statsTrack = (t) => ({
+  id: t.id,
+  title: t.name,
+  artist: t.artists?.[0]?.name || '',
+  artists: (t.artists || []).map((a) => a.name),
+  art: smallestImage(t.album?.images, 64),
+  durationMs: t.duration_ms || 0,
+  url: t.external_urls?.spotify || '',
+});
+
+async function statsRequest(sid, pathAndQuery) {
+  try {
+    return await userRequest(sid, 'GET', pathAndQuery);
+  } catch (err) {
+    if (err.status === 403 && /scope/i.test(err.message)) err.reason = 'SCOPE';
+    throw err;
+  }
+}
+
+async function topItems(sid, range = 'short_term') {
+  const tr = TOP_RANGES.includes(range) ? range : 'short_term';
+  const [artists, tracks] = await Promise.all([
+    statsRequest(sid, `/me/top/artists?time_range=${tr}&limit=20`),
+    statsRequest(sid, `/me/top/tracks?time_range=${tr}&limit=50`),
+  ]);
+  return {
+    artists: (artists?.items || []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      art: smallestImage(a.images),
+      genres: (a.genres || []).slice(0, 3),
+      url: a.external_urls?.spotify || '',
+    })),
+    tracks: (tracks?.items || []).filter((t) => t?.id).map(statsTrack),
+  };
+}
+
+// Até 50 últimas reproduções (o Spotify só registra o que tocou por mais de ~30s).
+async function recentlyPlayed(sid) {
+  const data = await statsRequest(sid, '/me/player/recently-played?limit=50');
+  return (data?.items || [])
+    .filter((it) => it?.track?.id && it.played_at)
+    .map((it) => ({ playedAt: Date.parse(it.played_at), ...statsTrack(it.track) }))
+    .filter((it) => Number.isFinite(it.playedAt));
 }
 
 const deviceQuery = (deviceId) => (deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : '');
@@ -512,6 +587,9 @@ module.exports = {
   getUserToken,
   searchToken,
   search,
+  hasStatsScopes,
+  topItems,
+  recentlyPlayed,
   player,
   SpotifyPlayerError,
 };

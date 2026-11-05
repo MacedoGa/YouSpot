@@ -88,6 +88,15 @@ O YouTube Music não tem API para ser controlado de fora. O **YouSpot Ponte** (p
 
 Limitações: só Android; precisa do YouTube Music **Premium** (sem ele o YouTube Music para em segundo plano); a integração não é oficial, então uma atualização do YouTube Music pode mudar o comportamento. O APK é compilado pelo GitHub Actions (`.github/workflows/android.yml`) a cada mudança em `android/`.
 
+### 6. Cápsula sonora
+Aba **Cápsula** na sala (ou **🎧 Minha cápsula sonora** na tela inicial):
+
+- **Mais ouvidos**: seus artistas e músicas mais ouvidos no Spotify nas últimas 4 semanas, 6 meses ou 1 ano. Toque num artista para ver as suas músicas dele.
+- **Seu mês**: minutos ouvidos, músicas tocadas e artistas de cada mês. O Spotify só informa as últimas 50 reproduções, então o YouSpot vai guardando o histórico **no próprio aparelho** enquanto está aberto (a cada 20 min, inclusive durante a jam).
+- **Histórico completo**: importe o arquivo de dados da conta (spotify.com › Privacidade › *Baixar seus dados* › *Histórico de streaming estendido*). O .zip é lido só no navegador e nada vai para o servidor.
+
+Quem entrou no Spotify antes desta versão precisa conectar de novo para autorizar o acesso aos mais ouvidos. Em modo de desenvolvimento, o app do Spotify aceita no máximo 5 contas cadastradas em *User Management*.
+
 ## Estrutura
 
 ```
